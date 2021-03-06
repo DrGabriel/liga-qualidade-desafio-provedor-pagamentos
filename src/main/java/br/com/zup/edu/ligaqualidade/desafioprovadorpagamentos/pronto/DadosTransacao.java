@@ -5,7 +5,7 @@ import java.time.LocalDate;
 
 public class DadosTransacao {
 
-	public final BigDecimal valor;
+	public  BigDecimal valor;
 	public final MetodoPagamento metodo;
 	public final String numero;
 	public final String nome;

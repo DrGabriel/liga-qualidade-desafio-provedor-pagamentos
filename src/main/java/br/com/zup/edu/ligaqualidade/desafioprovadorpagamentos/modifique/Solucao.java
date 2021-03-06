@@ -1,74 +1,67 @@
 package br.com.zup.edu.ligaqualidade.desafioprovadorpagamentos.modifique;
 
-import br.com.zup.edu.ligaqualidade.desafioprovadorpagamentos.pronto.MetodoPagamento;
+import br.com.zup.edu.ligaqualidade.desafioprovadorpagamentos.modifique.dominio.dto.Recebivel;
+import br.com.zup.edu.ligaqualidade.desafioprovadorpagamentos.modifique.dominio.servico.ServicoDescontoTransacaoRecebimentoAdiantado;
+import br.com.zup.edu.ligaqualidade.desafioprovadorpagamentos.modifique.dominio.servico.ServicoMapeadorInfoTransacoes;
+import br.com.zup.edu.ligaqualidade.desafioprovadorpagamentos.modifique.dominio.servico.ServicoMapeadorRecebimentoAdiantado;
+import br.com.zup.edu.ligaqualidade.desafioprovadorpagamentos.modifique.dominio.servico.ServicoRecebiveis;
+import br.com.zup.edu.ligaqualidade.desafioprovadorpagamentos.pronto.DadosRecebimentoAdiantado;
+import br.com.zup.edu.ligaqualidade.desafioprovadorpagamentos.pronto.DadosTransacao;
 
-import java.math.BigDecimal;
-import java.math.RoundingMode;
-import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
+import java.util.stream.Collectors;
 
 public class Solucao {
 
-	/**
-	 * 
-	 * @param infoTransacoes dados das transações. A String está formatada da seguinte maneira:		
-		<b>"valor,metodoPagamento,numeroCartao,nomeCartao,validade,cvv,idTransacao"</b>
-		<ol>
-		 <li> Valor é um decimal</li>
-	 	 <li> O método de pagamento é 'DEBITO' ou 'CREDITO' </li>
-	 	 <li> Validade é uma data no formato dd/MM/yyyy. </li>
-	 	</ol>
-	 	
-	 * @param infoAdiantamentos informacao da transacao que pode ser recebida adiantada. A String está formatada da seguinte maneira:		
-		<b>"idTransacao,taxa"</b>
-		<ol>
-	 	 <li> Taxa é um decimal </li>	 	 
-	 	</ol> 
-	 * 
-	 * @return Uma lista de array de string com as informações na seguinte ordem:
-	 * [status,valorOriginal,valorASerRecebidoDeFato,dataEsperadoRecebimento].
-	 * <ol>
-	 *  <li>O status pode ser 'pago' ou 'aguardando_pagamento'</li>
-	 *  <li>O valor original e o a ser recebido de fato devem vir no formato decimal. Ex: 50.45</li>
-	 *  <li>dataEsperadoRecebimento deve ser formatada como dd/MM/yyyy. Confira a classe {@link DateTimeFormatter}</li> 
-	 * </ol> 
-	 * 
-	 * É esperado que o retorno respeite a ordem de recebimento
-	 */
-	public static List<String[]> executa(List<String> infoTransacoes, List<String> infoAdiantamentos) {
+    /**
+     * @param infoTransacoes    dados das transações. A String está formatada da seguinte maneira:
+     *                          <b>"valor,metodoPagamento,numeroCartao,nomeCartao,validade,cvv,idTransacao"</b>
+     *                          <ol>
+     *                          <li> Valor é um decimal</li>
+     *                          <li> O método de pagamento é 'DEBITO' ou 'CREDITO' </li>
+     *                          <li> Validade é uma data no formato dd/MM/yyyy. </li>
+     *                          </ol>
+     * @param infoAdiantamentos informacao da transacao que pode ser recebida adiantada. A String está formatada da seguinte maneira:
+     *                          <b>"idTransacao,taxa"</b>
+     *                          <ol>
+     *                          <li> Taxa é um decimal </li>
+     *                          </ol>
+     * @return Uma lista de array de string com as informações na seguinte ordem:
+     * [status,valorOriginal,valorASerRecebidoDeFato,dataEsperadoRecebimento].
+     * <ol>
+     *  <li>O status pode ser 'pago' ou 'aguardando_pagamento'</li>
+     *  <li>O valor original e o a ser recebido de fato devem vir no formato decimal. Ex: 50.45</li>
+     *  <li>dataEsperadoRecebimento deve ser formatada como dd/MM/yyyy. Confira a classe {@link DateTimeFormatter}</li>
+     * </ol>
+     * <p>
+     * É esperado que o retorno respeite a ordem de recebimento
+     */
+    public static List<String[]> executa(List<String> infoTransacoes, List<String> infoAdiantamentos) {
 
-		List<String[]> respostaTransacoes = new ArrayList<>();
+        List<DadosTransacao> dadosTransacoes = mapeiaInfoTransacoesParaDadosTransacoes(infoTransacoes);
+        List<DadosRecebimentoAdiantado> recebimentoAdiantados = mapeiaInfoAdiantamentoParaDadosRecebimentoAdiantado(infoAdiantamentos);
 
-		infoTransacoes.forEach(transacao -> {
-			String[] tran = transacao.split(",");
-			String[] retornoTran =  new String[4];
-			retornoTran[1] = tran[0];
-			trataTransacao(tran, retornoTran);
-			respostaTransacoes.add(retornoTran);
-		});
-		return respostaTransacoes;
-	}
+        List<DadosTransacao> dadosTransacaoesPosRecebimento = ServicoDescontoTransacaoRecebimentoAdiantado.aplicaRecebimentos(dadosTransacoes, recebimentoAdiantados);
+        List<Recebivel> recebiveis = ServicoRecebiveis.gerarRecebiveis(dadosTransacaoesPosRecebimento);
 
-	private static void trataTransacao(String[] tran, String[] retornoTran) {
-		if (tran[1].equals(MetodoPagamento.DEBITO.toString())) {
-			retornoTran[0] = "pago";
-			retornoTran[2] = calculoTaxa(tran[0],3);
-			retornoTran[3] = LocalDate.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy"));
-		} else {
-			retornoTran[0] = "aguardando_pagamento";
-			retornoTran[2] = calculoTaxa(tran[0],5);
-			retornoTran[3] = LocalDate.now().plusDays(30).format(DateTimeFormatter.ofPattern("dd/MM/yyyy"));
-		}
-	}
+        return mapeiaRecebiveisParaString(recebiveis);
+    }
 
-	private static String calculoTaxa(String valorTransacao, int porcentagem) {
+    private static List<DadosTransacao> mapeiaInfoTransacoesParaDadosTransacoes(List<String> infoTransacoes) {
+        return ServicoMapeadorInfoTransacoes.mapeiaTransacoes(infoTransacoes);
+    }
 
-		Double valor = Double.parseDouble(valorTransacao);
-		valor = valor - (valor*(porcentagem/100.f));
-		return BigDecimal.valueOf(valor).setScale(2, RoundingMode.HALF_EVEN).toString();
+    private static List<DadosRecebimentoAdiantado> mapeiaInfoAdiantamentoParaDadosRecebimentoAdiantado(List<String> infoAdiantamentos) {
+        return ServicoMapeadorRecebimentoAdiantado.mapeiaInfoAdiantamentos(infoAdiantamentos);
+    }
 
-	}
+    private static List<String[]> mapeiaRecebiveisParaString(List<Recebivel> recebiveis) {
+        return Optional.of(recebiveis).orElse(List.of()).stream().map(
+                recebivel -> recebivel.toString().split(",")
+        ).collect(Collectors.toList());
+    }
+
 
 }
